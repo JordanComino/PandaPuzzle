@@ -24,10 +24,10 @@ namespace PandaPuzzle
 
         enum Direction
         {
-            UP,
-            DOWN,
-            LEFT,
-            RIGHT
+            UP=1,
+            DOWN=2,
+            LEFT=3,
+            RIGHT=4
         };
 
         class RuleValue
@@ -56,7 +56,46 @@ namespace PandaPuzzle
 				mIndexs.Add(idx);
 				return true;
 			}
-        };
+
+			// returns the new value
+			public int SetMinIndex(int p)
+			{
+				if (minIndex == -1)
+					minIndex = p;
+				else
+					minIndex = Math.Max(minIndex, p);
+
+				return minIndex;
+			}
+
+			// returns the new value
+			public int SetMaxIndex(int p)
+			{
+				if (maxIndex == -1)
+					maxIndex = p;
+				else
+					maxIndex = Math.Min(maxIndex, p);
+
+				return maxIndex;
+			}
+
+			public void ClampMinMax(int p, int amount, Direction dir)
+			{
+				
+				if (dir == Direction.RIGHT || dir == Direction.DOWN)
+					SetMaxIndex(p + amount);
+				else
+					SetMinIndex(p - amount);
+			}
+
+			public int GetRange()
+			{
+				if (minIndex == -1 || maxIndex == -1)
+					return -1;
+
+				return maxIndex - minIndex;
+			}
+		};
 
         class RuleSet
         {
@@ -80,10 +119,30 @@ namespace PandaPuzzle
 
                 return true;
             }
+
+			public int GetBleedValue(int x, int y)
+			{
+				if (mID == RuleID.RI_COLUMN)
+					return y;
+
+				return x;
+			}
+
+			//public int GetBoardIndex(int p)
+			//{
+			//	if(mID == RuleID.RI_COLUMN)
+			//	{
+			//		return 0;
+			//	}
+			//	else// if(mID == RuleID.RI_ROW)
+			//	{
+			//
+			//	}
+			//}
         };
 
 
-        private static bool DRAW_GRID = true;
+        private static bool DRAW_GRID = false;
 
         /// <summary>
         /// Required designer variable.
@@ -170,6 +229,22 @@ namespace PandaPuzzle
             return (mMaxWidth * y) + x;
         }
 
+		// returns true if you didn't move off the board
+		private bool GetIndexOffset(int idx, int offset, Direction dir, RuleSet rule, out int newIdx)
+		{
+			for (; offset > 0; --offset)
+			{
+				if (!ShiftIndex(ref idx, dir))
+				{
+					newIdx = idx;
+					return false;
+				}
+			}
+
+			newIdx = idx;
+			return true;
+		}
+
 		public void GetXY(int idx, out int x, out int y)
 		{
 			x = idx % mMaxWidth;
@@ -222,7 +297,10 @@ namespace PandaPuzzle
 
         void SetBoardValue(int idx, SquareType type)
         {
-            Debug.Assert(mBoard[idx] == SquareType.ST_UNKNOWN || mBoard[idx] == type); // make sure we haven't set this one yet, or we've calculated it's value to remain the same. Otherwise, there's a logic error somewhere
+			Debug.Assert(mBoard[idx] == SquareType.ST_UNKNOWN || mBoard[idx] == type); // make sure we haven't set this one yet, or we've calculated it's value to remain the same. Otherwise, there's a logic error somewhere
+			//if ((mBoard[idx] == SquareType.ST_UNKNOWN || mBoard[idx] == type) == false)
+			//	throw new Exception();
+            mBoardHasChanged |= mBoard[idx] != type;
             mBoard[idx] = type;
         }
 

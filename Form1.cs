@@ -13,93 +13,118 @@ using System.Collections.Generic;
 
 namespace PandaPuzzle
 {
-    public partial class Form1 : Form
-    {
-        int mMaxWidth = 0;
-        int mMaxHeight = 0;
-        int mSquareSize = 30;
-        int mDrawOffset = 10;
+	public partial class Form1 : Form
+	{
+		int mMaxWidth = 0;
+		int mMaxHeight = 0;
+		int mSquareSize = 30;
+		int mDrawOffset = 10;
 
-        List<SquareType> mBoard = new List<SquareType>();
-        //List<List<int>> mRowRules = new List<List<int>>();
-        //List<List<int>> mColRules = new List<List<int>>();
+		List<SquareType> mBoard = new List<SquareType>();
+		bool mBoardHasChanged = false;
+		//List<List<int>> mRowRules = new List<List<int>>();
+		//List<List<int>> mColRules = new List<List<int>>();
 
-        //List<RuleSet> mRowRules = new List<RuleSet>();
-        //List<RuleSet> mColRules = new List<RuleSet>();
-        List<RuleSet> mRules = new List<RuleSet>();
+		//List<RuleSet> mRowRules = new List<RuleSet>();
+		//List<RuleSet> mColRules = new List<RuleSet>();
+		List<RuleSet> mRules = new List<RuleSet>();
 
-        public Form1()
-        {
-            InitializeComponent();
-            LoadData();
-            Solve();
-        }
+		public Form1()
+		{
+			InitializeComponent();
+			LoadData();
+			try
+			{
+				Solve();
+			}
+			catch (Exception e)
+			{
+			}
+		}
 
-        private void Solve()
-        {
-            //SolveFullRules(mRules);
-            //SolveFullRules(mColRules);
-
-            CalculateMinMax();
+		private void Solve()
+		{
+			// Setup board
+			CalculateMinMax();
 			SolveOverlapRules();
-            //SolveOverlapRules(mRowRules);
 
-			BleedEdges();
-			//BleedEdges();
-        }
+			int count = 0;
 
-        // Checks to see if any given rules fill up the whole line with the minimum possible whitespace (i.e., 1), and puts those answers onto our board
-        private void SolveFullRules(List<RuleSet> rules)
-        {
-            foreach (RuleSet rule in rules)
-            {
-                int x, y;
-                if (rule.mID == RuleID.RI_COLUMN)
-                {
-                    x = rule.mIndex;
-                    y = 0;
-                }
-                else
-                {
-                    x = 0;
-                    y = rule.mIndex;
-                }
+			while (mBoardHasChanged)
+			{
+				while (mBoardHasChanged)
+				{
+					++count;
+					mBoardHasChanged = false;
+					BleedEdges();
+					SolveOverlapRules();
+				}
 
-                int max = rule.mID == RuleID.RI_COLUMN ? mMaxHeight : mMaxWidth;
-                if (MinSpaceRequired(rule) == max)
-                    SolveFullSet(rule, x, y);
+				AnalyzeRules();
+				SolveOverlapRules();
+				FinaliseSolvedRuleSets();
             }
-        }
 
-        private void CalculateMinMax()
-        {
-            foreach(RuleSet rule in mRules)
+			Console.WriteLine(count);
+		}
+
+		// Checks to see if any given rules fill up the whole line with the minimum possible whitespace (i.e., 1), and puts those answers onto our board
+		private void SolveFullRules(List<RuleSet> rules)
+		{
+			foreach (RuleSet rule in rules)
+			{
+				int x, y;
+				if (rule.mID == RuleID.RI_COLUMN)
+				{
+					x = rule.mIndex;
+					y = 0;
+				}
+				else
+				{
+					x = 0;
+					y = rule.mIndex;
+				}
+
+				int max = rule.mID == RuleID.RI_COLUMN ? mMaxHeight : mMaxWidth;
+				if (MinSpaceRequired(rule) == max)
+					SolveFullSet(rule, x, y);
+			}
+		}
+
+		private void CalculateMinMax()
+		{
+			foreach (RuleSet rule in mRules)
 				CalculateRuleSetMinMax(rule);
-        }
+		}
 
 		private void CalculateRuleSetMinMax(RuleSet rule)
+		{
+			CalculateRuleSetMin(rule);
+			rule.mRules.Reverse();
+			CalculateRuleSetMax(rule);
+			rule.mRules.Reverse();
+		}
+
+		// Assumes that the RuleSet has already been put in order
+		private void CalculateRuleSetMax(RuleSet rule)
+		{
+			int p = (rule.mID == RuleID.RI_COLUMN ? mMaxHeight : mMaxWidth) - 1;
+			foreach (RuleValue value in rule.mRules)
+			{
+				p = value.SetMaxIndex(p);
+				p -= value.mValue + 1;
+			}
+		}
+
+		// Assumes that the RuleSet has already been put in order
+		private void CalculateRuleSetMin(RuleSet rule)
 		{
 			int p = 0;
 			foreach (RuleValue value in rule.mRules)
 			{
-				if (value.minIndex == -1 || p > value.minIndex)
-					value.minIndex = p;
-				else
-					p = value.minIndex;
+				p = value.SetMinIndex(p);
 				p += value.mValue + 1;
 			}
-
-			p = (rule.mID == RuleID.RI_COLUMN ? mMaxHeight : mMaxWidth) - 1;
-			rule.mRules.Reverse();
-			foreach (RuleValue value in rule.mRules)
-			{
-				if (value.maxIndex == -1 || p < value.maxIndex)
-					value.maxIndex = p;
-				else
-					p = value.maxIndex;
-				p -= value.mValue + 1;
-			}
-			rule.mRules.Reverse();
 		}
 
         private void SolveOverlapRules()
@@ -139,13 +164,19 @@ namespace PandaPuzzle
 		{
 			foreach(RuleSet rule in mRules)
 			{
+				if (rule.IsSolved())
+					continue;
 				//if (rule.mID == RuleID.RI_COLUMN)
 				//if (rule.mID == RuleID.RI_ROW)
 				//	continue;
 
 				Direction dir = (rule.mID == RuleID.RI_ROW ? Direction.RIGHT : Direction.DOWN);
 				foreach (RuleValue value in rule.mRules)
-				{	
+				{
+					if (value.IsSolved())
+						continue;
+
+					CalculateRuleSetMin(rule);
 					if (BleedValue(rule, value, dir) == false)
 						break;
 				}
@@ -154,6 +185,10 @@ namespace PandaPuzzle
 				dir = (rule.mID == RuleID.RI_ROW ? Direction.LEFT : Direction.UP);
 				foreach (RuleValue value in rule.mRules)
 				{
+					if (value.IsSolved())
+						continue;
+
+					CalculateRuleSetMax(rule);
 					if (BleedValue(rule, value, dir) == false)
 						break;
 				}
@@ -163,9 +198,6 @@ namespace PandaPuzzle
 
 		private bool BleedValue(RuleSet rule, RuleValue value, Direction direction)
 		{
-			// Make sure these are up-to-date. 
-			CalculateRuleSetMinMax(rule);
-
 			int x, y;
 			if(rule.mID == RuleID.RI_ROW)
 			{
@@ -192,6 +224,8 @@ namespace PandaPuzzle
 				if (canContinue)
 					SetBoardValue(idx, SquareType.ST_WHITE);
 
+				value.ClampMinMax(rule.GetBleedValue(x, y), value.mValue - 1, direction);
+
 				return true;
 			}
 
@@ -199,19 +233,26 @@ namespace PandaPuzzle
 			bool isValid = false;
 			for (int i = 0; i < value.mValue; ++i)
 			{
-				if (mBoard[idx] == SquareType.ST_UNKNOWN) // no new information, 
+				if (mBoard[idx] == SquareType.ST_UNKNOWN)
 				{
-					if (foundPortion)
+					if (foundPortion) // If we already found a portion of ourselves, it's impossible for this to not be black
 					{
-
+						SetBoardValue(idx, SquareType.ST_BLACK);
+						//if (direction == Direction.RIGHT || direction == Direction.DOWN)
+						//value.ClampMinMax(i + (value.mValue - 1));
+						value.ClampMinMax(rule.GetBleedValue(x, y),  i + (value.mValue - 1), direction);
+						//else
+						//	value.ClampMinMax(value.maxIndex - i - (value.mValue - 1));
 					}
-
 					isValid = ShiftIndex(ref idx, direction);
+
 					continue;
 				}
 
 				if (mBoard[idx] == SquareType.ST_WHITE) // It's not possible to fit in this space. Blank it out, and move ourselves forward
 				{
+					Debug.Assert(foundPortion == false); // It shouldn't be possible to have found a portion of ourselves, and then run out of room.
+
 					int initIdx = GetIndex(x, y);
 					for (int j = 0; j < i; ++j)
 					{
@@ -229,15 +270,24 @@ namespace PandaPuzzle
 
 				if (mBoard[idx] == SquareType.ST_BLACK)
 				{
+					if (!foundPortion) // special case. We can sometimes reduce our max range by 1 if this would make two black runs collide
+					{
+						int p;
+						if (GetIndexOffset(idx, value.mValue, direction, rule, out p))
+						{
+							if (mBoard[p] == SquareType.ST_BLACK)
+							{
+								value.ClampMinMax(rule.GetBleedValue(x, y), i + (value.mValue - 2), direction);
+							}
+						}
+					}
+
 					foundPortion = true;
-					if (direction == Direction.RIGHT || direction == Direction.DOWN)
-					{
-						value.maxIndex = Math.Min(value.maxIndex, value.minIndex + i + (value.mValue - 1));
-					}
-					else
-					{
-						value.minIndex = Math.Max(value.minIndex, value.maxIndex - i - (value.mValue - 1));
-					}
+					//if (direction == Direction.RIGHT || direction == Direction.DOWN)
+					//	value.SetMaxIndex(value.minIndex + i + (value.mValue - 1));
+					//else
+					//	value.SetMinIndex(value.maxIndex - i - (value.mValue - 1));
+					value.ClampMinMax(rule.GetBleedValue(x, y), i + (value.mValue - 1), direction);
 				}
 
 				isValid = ShiftIndex(ref idx, direction);
@@ -250,25 +300,67 @@ namespace PandaPuzzle
 					SetBoardValue(x, y, SquareType.ST_BLACK);
 					BleedValue(rule, value, direction);
 				}
-
-				int initIdx = GetIndex(x, y);
-				while (isValid && mBoard[idx] == SquareType.ST_BLACK)
+				else if (mBoard[idx] == SquareType.ST_BLACK)
 				{
-					SetBoardValue(initIdx, SquareType.ST_WHITE);
-					if (direction == Direction.RIGHT || direction == Direction.DOWN)
-						++value.minIndex;
-					else
-						--value.maxIndex;
+					int initIdx = GetIndex(x, y);
+					while (isValid && mBoard[idx] == SquareType.ST_BLACK)
+					{
+						SetBoardValue(initIdx, SquareType.ST_WHITE);
+						if (direction == Direction.RIGHT || direction == Direction.DOWN)
+							++value.minIndex;
+						else
+							--value.maxIndex;
 
-					ShiftIndex(ref initIdx, direction);
-					isValid = ShiftIndex(ref idx, direction);
+						ShiftIndex(ref initIdx, direction);
+						isValid = ShiftIndex(ref idx, direction);
+					}
 				}
 			}
 
 			return false;
 		}
 
-        private int MinSpaceRequired(RuleSet rule)
+		// Here we look for all the special case rules for sequence placement, as well as going beyond just the edges.
+		private void AnalyzeRules()
+		{
+			foreach (RuleSet rule in mRules)
+			{
+				if (rule.IsSolved())
+					continue;
+
+				ClampToLargerRun(rule);
+
+				foreach (RuleValue value in rule.mRules)
+				{
+					if (value.IsSolved())
+						continue;
+
+					RedeuceValuesMinMax(rule, value);
+
+					
+				}
+			}
+		}
+
+		private void FinaliseSolvedRuleSets()
+		{
+			foreach (RuleSet rule in mRules)
+			{
+				if (rule.IsSolved())
+				{
+					int i = rule.mIndex;
+					int max = rule.mID == RuleID.RI_ROW ? mMaxWidth : mMaxHeight;
+					for (int p = 0; p < max; ++p)
+					{
+						int idx = rule.mID == RuleID.RI_ROW ? GetIndex(p, i) : GetIndex(i, p);
+						if (mBoard[idx] == SquareType.ST_UNKNOWN)
+							SetBoardValue(idx, SquareType.ST_WHITE);
+                    }
+				}
+			}
+		}
+
+		private int MinSpaceRequired(RuleSet rule)
         {
             int total = 0;
             foreach(RuleValue val in rule.mRules)
@@ -279,7 +371,111 @@ namespace PandaPuzzle
             return total;
         }
 
-        private void SolveFullSet(RuleSet rule, int x, int y)
+		private void RedeuceValuesMinMax(RuleSet rule, RuleValue value)
+		{
+			int x, y;
+			//if (rule.mID == RuleID.RI_ROW)
+			//{
+			//	RedeuceValues
+			//	x = direction == Direction.RIGHT ? value.minIndex : value.maxIndex;
+			//	y = rule.mIndex;
+			//}
+			//else
+			//{
+			//	x = rule.mIndex;
+			//	y = direction == Direction.DOWN ? value.minIndex : value.maxIndex;
+			//}
+			//int idx = GetIndex(x, y);
+		}
+
+		private void RedeuceValues(RuleSet rule, RuleValue value, Direction dir)
+		{
+		}
+
+		private void ClampToLargerRun(RuleSet rule)
+		{
+
+			//if (rule.mID == RuleID.RI_COLUMN)
+			//	return;
+			
+			Direction dir = rule.mID == RuleID.RI_ROW ? Direction.RIGHT : Direction.DOWN;
+			ClampToLargerRun(rule, dir);
+			rule.mRules.Reverse();
+
+			dir = rule.mID == RuleID.RI_ROW ? Direction.LEFT : Direction.UP;
+			ClampToLargerRun(rule, dir);
+			rule.mRules.Reverse();
+		}
+
+		private void ClampToLargerRun(RuleSet rule, Direction dir)
+		{
+			RuleValue value = null;
+			int iValue = -1;
+			for (int i = 0; i < rule.mRules.Count; ++i)
+			{
+				if ((rule.mRules[i].IsSolved() && value == null) || (value != null && rule.mRules[i].mValue <= value.mValue))
+					continue;
+
+				if (value == null)
+				{
+					iValue = i;
+					value = rule.mRules[i];
+				}
+				else
+				{
+					//int x = value.minIndex, y = rule.mIndex;
+					int x, y;
+					if (rule.mID == RuleID.RI_ROW)
+					{
+						x = dir == Direction.RIGHT ? value.minIndex : value.maxIndex;
+						y = rule.mIndex;
+					}
+					else
+					{
+						x = rule.mIndex;
+						y = dir == Direction.DOWN ? value.minIndex : value.maxIndex;
+					}
+					int idx = GetIndex(x, y);
+					int start = -1;
+					for (int p = 0; p <= value.GetRange(); ++p)
+					{
+						if (mBoard[idx] == SquareType.ST_BLACK)
+						{
+							start = p;
+							while (mBoard[idx] == SquareType.ST_BLACK)
+							{
+								++p;
+								if (!ShiftIndex(ref idx, dir))
+									break;
+							}
+
+							if (p - start > value.mValue)
+							{
+								if (dir == Direction.RIGHT || dir == Direction.DOWN)
+									value.SetMaxIndex(value.minIndex + (start - 2));
+								else
+									value.SetMinIndex(value.maxIndex - (start - 2));
+
+								break;
+							}
+						}
+
+						if (!ShiftIndex(ref idx, dir))
+							break;
+					}
+
+					value = null;
+				}
+
+				if (value == null && iValue != -1)
+				{
+					i = iValue;
+					iValue = -1;
+				}
+			}
+		}
+
+		private void SolveFullSet(RuleSet rule, int x, int y)
         {
             int idx = GetIndex(x, y);
             Direction dir = rule.mID == RuleID.RI_COLUMN ? Direction.DOWN : Direction.RIGHT;
